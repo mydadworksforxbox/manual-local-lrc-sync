@@ -1,0 +1,15 @@
+{
+  "addons": [
+    {
+      "name": "Manual Local LRC Sync",
+      "type": "lyrics",
+      "author": "@mydadworksforxbox",
+      "version": "1.0.0",
+      "description": "type, edit, and manually sync local lyrics inside ivLyrics. saves synced LRC locally per track without sending local song data to any server.",
+      "downloadUrl": "https://raw.githubusercontent.com/mydadworksforxbox/manual-local-lrc-sync/main/manual-local-lrc-sync.js",
+      "githubUrl": "https://github.com/mydadworksforxbox/manual-local-lrc-sync",
+      "preview": "",
+      "minAppVersion": "5.0.0"
+    }
+  ]
+}
