@@ -285,6 +285,27 @@
     return candidates[0]?.text || "";
   }
 
+  function forceUseManualProvider() {
+    try {
+      window.LyricsAddonManager?.setProviderEnabled?.(ADDON_ID, true);
+
+      const order = window.LyricsAddonManager?.getProviderOrder?.() || [];
+      if (Array.isArray(order)) {
+        window.LyricsAddonManager?.setProviderOrder?.([
+          ADDON_ID,
+          ...order.filter(id => id !== ADDON_ID)
+        ]);
+      }
+
+      const item = Spicetify.Player?.data?.item;
+      if (window.lyricContainer?.fetchLyrics && item) {
+        window.lyricContainer.fetchLyrics(item, -1, true);
+      }
+    } catch (e) {
+      console.warn("[Manual LRC Sync] Could not force manual provider", e);
+    }
+  }
+
   function refreshLyrics() {
     try {
       const item = Spicetify.Player?.data?.item;
@@ -437,14 +458,14 @@
         <div class="ivmlrc-editor-help">
         ${mode === "sync"
             ? "Use <b>Start Sync</b>, then press <b>Space</b> or <b>Tap Line</b> when each line starts. To change lyric text, use <b>Type / Edit Lyrics</b>."
-            : "Type, paste, or correct the lyrics here. Click <b>Save Lyrics Text</b> to keep them locally for this exact song. You can sync them after."}
+            : "Type, paste, or correct the lyrics here. Click <b>Save & Load Lyrics</b> to keep them locally for this exact song. You can sync them after."}
         </div>
 
         ${mode === "edit" ? `
         <textarea class="ivmlrc-input" spellcheck="false" placeholder="Type or paste lyrics here..."></textarea>
 
         <div class="ivmlrc-controls">
-            <button class="ivmlrc-save-text">Save Lyrics Text</button>
+            <button class="ivmlrc-save-text">Save & Load Lyrics</button>
             <button class="ivmlrc-clear">Clear Saved Lyrics</button>
             <button class="ivmlrc-copy">Copy LRC/Text</button>
         </div>
@@ -462,7 +483,7 @@
           <button class="ivmlrc-start">Start Sync</button>
           <button class="ivmlrc-tap primary" disabled>Tap Line</button>
           <button class="ivmlrc-undo" disabled>Undo Timing</button>
-          <button class="ivmlrc-save-sync" disabled>Save Synced Lyrics</button>
+          <button class="ivmlrc-save-sync" disabled>Save & Load Synced Lyrics</button>
         </div>
 
         <div class="ivmlrc-lines"></div>
@@ -582,8 +603,8 @@
       }
 
       if (input) input.value = plainText;
+
       const payload = saveLyrics(track, plainText);
-      refreshLyrics();
 
       lines = splitLyrics(plainText);
       timings = [];
@@ -595,7 +616,10 @@
       saveSyncBtn.disabled = false;
 
       render();
-      setStatus(`Saved lyrics text locally for this song. Lines: ${payload.unsynced?.length || 0}.`);
+
+      forceUseManualProvider();
+
+      setStatus(`Saved and loaded as local lyrics for this song. Lines: ${payload.unsynced?.length || 0}.`);
     }
 
     function startSync() {
@@ -674,10 +698,11 @@
       if (input) input.value = lrc;
 
       const payload = saveLyrics(track, lrc);
-      refreshLyrics();
+
+      forceUseManualProvider();
 
       saveSyncBtn.disabled = true;
-      setStatus(`Saved synced lyrics locally for this song. Synced lines: ${payload.synced?.length || 0}.`);
+      setStatus(`Saved and loaded synced local lyrics for this song. Synced lines: ${payload.synced?.length || 0}.`);
     }
 
     function clearSaved() {
@@ -754,7 +779,7 @@
     input.addEventListener("input", () => {
         saveSyncBtn.disabled = false;
         if (saveTextBtn) saveTextBtn.disabled = false;
-        setStatus("Unsaved lyric edits. Click Save Lyrics Text.");
+        setStatus("Unsaved lyric edits. Click Save & Load Lyrics.");
     });
     }
 
