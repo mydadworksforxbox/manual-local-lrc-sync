@@ -412,7 +412,7 @@
     }
   }
 
-  function openInlineEditor(mode = "edit") {
+  async function openInlineEditor(mode = "edit") {
     const panel = findLocalLyricsPanel();
     if (!panel) return;
 
@@ -420,7 +420,7 @@
 
     const track = getTrack();
     const saved = loadSavedLyrics(track);
-    const imported = saved?.lrc ? "" : findImportedLyricsForCurrentTrack(track);
+    const imported = saved?.lrc ? "" : await findImportedLyricsForCurrentTrack(track);
     const initial = saved?.lrc || imported || "";
 
     const editor = document.createElement("div");
@@ -434,19 +434,21 @@
         <button class="ivmlrc-editor-close">Close</button>
       </div>
 
-      <div class="ivmlrc-editor-help">
+        <div class="ivmlrc-editor-help">
         ${mode === "sync"
-          ? "Edit the lyrics if needed, press <b>Apply Text Changes</b>, then <b>Start Sync</b>. Press <b>Space</b> or <b>Tap Line</b> when each line starts."
-          : "Type, paste, or correct the lyrics here. Click <b>Save Lyrics Text</b> to keep them locally for this exact song. You can sync them after."}
-      </div>
+            ? "Use <b>Start Sync</b>, then press <b>Space</b> or <b>Tap Line</b> when each line starts. To change lyric text, use <b>Type / Edit Lyrics</b>."
+            : "Type, paste, or correct the lyrics here. Click <b>Save Lyrics Text</b> to keep them locally for this exact song. You can sync them after."}
+        </div>
 
-      <textarea class="ivmlrc-input" spellcheck="false" placeholder="Type or paste lyrics here..."></textarea>
+        ${mode === "edit" ? `
+        <textarea class="ivmlrc-input" spellcheck="false" placeholder="Type or paste lyrics here..."></textarea>
 
         <div class="ivmlrc-controls">
-        <button class="ivmlrc-save-text">Save Lyrics Text</button>
-        <button class="ivmlrc-clear">Clear Saved Lyrics</button>
-        <button class="ivmlrc-copy">Copy LRC/Text</button>
+            <button class="ivmlrc-save-text">Save Lyrics Text</button>
+            <button class="ivmlrc-clear">Clear Saved Lyrics</button>
+            <button class="ivmlrc-copy">Copy LRC/Text</button>
         </div>
+        ` : ""}
 
       <div class="ivmlrc-sync-area">
         <div class="ivmlrc-controls">
@@ -479,8 +481,6 @@
     const status = editor.querySelector(".ivmlrc-status");
     const linesBox = editor.querySelector(".ivmlrc-lines");
 
-    applyBtn.onclick = () => applyTextChanges({ preserveExistingTimings: true });
-    saveTextBtn.onclick = saveTextOnly;
     const saveTextBtn = editor.querySelector(".ivmlrc-save-text");
     const clearBtn = editor.querySelector(".ivmlrc-clear");
     const copyBtn = editor.querySelector(".ivmlrc-copy");
@@ -490,7 +490,7 @@
     const undoBtn = editor.querySelector(".ivmlrc-undo");
     const saveSyncBtn = editor.querySelector(".ivmlrc-save-sync");
 
-    input.value = initial;
+    if (input) input.value = initial;
 
     let lines = [];
     let timings = [];
@@ -530,52 +530,58 @@
       });
     }
 
+    function getCurrentTextForEditor() {
+      if (mode === "edit") return input?.value || "";
+      return initial || "";
+    }
+
     function applyTextChanges({ preserveExistingTimings = true } = {}) {
-      const oldLines = lines.slice();
-      const oldTimings = timings.slice();
+    const oldLines = lines.slice();
+    const oldTimings = timings.slice();
 
-      const nextLines = splitLyrics(input.value);
-      const parsed = parseLrc(input.value);
+    const sourceText = getCurrentTextForEditor();
+    const nextLines = splitLyrics(sourceText);
+    const parsed = parseLrc(sourceText);
 
-      lines = nextLines;
+    lines = nextLines;
 
-      if (parsed.synced && parsed.synced.length === lines.length) {
+    if (parsed.synced && parsed.synced.length === lines.length) {
         timings = parsed.synced.map(x => x.startTime);
-      } else if (preserveExistingTimings && oldLines.length) {
+    } else if (preserveExistingTimings && oldLines.length) {
         timings = lines.map((line, i) => {
-          const oldIndex = oldLines.findIndex(old => old === line);
-          if (oldIndex !== -1 && typeof oldTimings[oldIndex] === "number") return oldTimings[oldIndex];
-          if (typeof oldTimings[i] === "number") return oldTimings[i];
-          return undefined;
+        const oldIndex = oldLines.findIndex(old => old === line);
+        if (oldIndex !== -1 && typeof oldTimings[oldIndex] === "number") return oldTimings[oldIndex];
+        if (typeof oldTimings[i] === "number") return oldTimings[i];
+        return undefined;
         });
-      } else {
+    } else {
         timings = [];
-      }
+    }
 
-      currentIndex = Math.min(currentIndex, Math.max(0, lines.length - 1));
-      syncing = false;
-      tapBtn.disabled = true;
-      undoBtn.disabled = !timings.some(x => typeof x === "number");
-      saveSyncBtn.disabled = false;
+    currentIndex = Math.min(currentIndex, Math.max(0, lines.length - 1));
+    syncing = false;
+    tapBtn.disabled = true;
+    undoBtn.disabled = !timings.some(x => typeof x === "number");
+    saveSyncBtn.disabled = false;
 
-      render();
+    render();
 
-      if (!lines.length) {
-        setStatus("No lyrics loaded. Type or paste lyrics first.");
-      } else {
-        setStatus(`Applied text changes. Lines loaded: ${lines.length}.`);
-      }
+    if (!lines.length) {
+        setStatus("No lyrics loaded. Use Type / Edit Lyrics or import lyrics first, then reopen Sync.");
+    } else {
+        setStatus(`Loaded ${lines.length} lines for syncing.`);
+    }
     }
 
     function saveTextOnly() {
-      const plainText = splitLyrics(input.value).join("\n");
+      const plainText = splitLyrics(input?.value || "").join("\n");
 
       if (!plainText.trim()) {
         setStatus("Nothing to save. Type or paste lyrics first.");
         return;
       }
 
-      input.value = plainText;
+      if (input) input.value = plainText;
       const payload = saveLyrics(track, plainText);
       refreshLyrics();
 
@@ -600,7 +606,7 @@
         tapBtn.disabled = true;
         undoBtn.disabled = true;
         saveSyncBtn.disabled = true;
-        setStatus("No lyrics loaded. Type or paste lyrics first.");
+        setStatus("No lyrics loaded. Use Type / Edit Lyrics first, or import lyrics and reopen Sync.");
         return;
       }
 
@@ -665,7 +671,7 @@
       applyTextChanges({ preserveExistingTimings: true });
 
       const lrc = buildLrc(lines, timings);
-      input.value = lrc;
+      if (input) input.value = lrc;
 
       const payload = saveLyrics(track, lrc);
       refreshLyrics();
@@ -677,7 +683,7 @@
     function clearSaved() {
       Spicetify.LocalStorage.remove(storageKey(track));
 
-      input.value = "";
+      if (input) input.value = "";
       lines = [];
       timings = [];
       currentIndex = 0;
@@ -693,19 +699,21 @@
     }
 
     function copy() {
-      const text = buildLrc(lines.length ? lines : splitLyrics(input.value), timings);
-      navigator.clipboard?.writeText(text || input.value);
+    const sourceText = input?.value || initial || "";
+    const text = buildLrc(lines.length ? lines : splitLyrics(sourceText), timings);
+    navigator.clipboard?.writeText(text || sourceText);
       setStatus("Copied.");
     }
 
+    if (saveTextBtn) {
     saveTextBtn.onclick = () => {
         applyTextChanges({ preserveExistingTimings: true });
         saveTextOnly();
     };
+    }
 
-    saveTextBtn.onclick = saveTextOnly;
-    clearBtn.onclick = clearSaved;
-    copyBtn.onclick = copy;
+    if (clearBtn) clearBtn.onclick = clearSaved;
+    if (copyBtn) copyBtn.onclick = copy;
 
     startBtn.onclick = startSync;
     tapBtn.onclick = tapLine;
@@ -742,18 +750,26 @@
       }
     });
 
+    if (input) {
     input.addEventListener("input", () => {
-      saveSyncBtn.disabled = false;
-      saveTextBtn.disabled = false;
-      setStatus("Unsaved lyric edits. Click Save Lyrics Text.");
+        saveSyncBtn.disabled = false;
+        if (saveTextBtn) saveTextBtn.disabled = false;
+        setStatus("Unsaved lyric edits. Click Save Lyrics Text.");
     });
+    }
 
     editor.tabIndex = -1;
     editor.focus();
 
-    if (saved?.lrc) setStatus("Loaded saved lyrics for this song. You can edit the text or sync timing.");
-    else if (imported) setStatus("Loaded imported lyrics for this song. You can edit, save, or sync them.");
-    else setStatus("No imported lyrics found. Type or paste lyrics here, then save.");
+    if (saved?.lrc) {
+    setStatus("Loaded saved lyrics for this song.");
+    } else if (imported) {
+    setStatus("Loaded imported lyrics for this song.");
+    } else if (mode === "sync") {
+    setStatus("No lyrics found for syncing. Use Type / Edit Lyrics first, or import lyrics and reopen this menu.");
+    } else {
+    setStatus("No imported lyrics found. Type or paste lyrics here, then save.");
+    }
 
     applyTextChanges({ preserveExistingTimings: false });
 
