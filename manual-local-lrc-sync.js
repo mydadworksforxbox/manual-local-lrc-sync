@@ -187,6 +187,58 @@
     }
   }
 
+  function installLocalProviderBridge() {
+    const tryInstall = () => {
+      const manager = window.LyricsAddonManager;
+      if (!manager?.getAddon) {
+        setTimeout(tryInstall, 300);
+        return;
+      }
+
+      const localProvider = manager.getAddon("local");
+
+      if (!localProvider?.getLyrics) {
+        setTimeout(tryInstall, 300);
+        return;
+      }
+
+      if (localProvider.__manualLocalLrcBridgeInstalled) return;
+
+      const originalGetLyrics = localProvider.getLyrics.bind(localProvider);
+
+      localProvider.getLyrics = async function bridgedLocalGetLyrics(info) {
+        const current = getTrack();
+        const track = {
+          ...current,
+          ...info,
+          uri: info?.uri || current.uri
+        };
+
+        const payload = loadSavedLyrics(track);
+
+        if (payload?.lrc) {
+          const parsed = parseLrc(payload.lrc);
+
+          return {
+            provider: "local",
+            uri: track.uri,
+            synced: parsed.synced,
+            unsynced: parsed.unsynced,
+            karaoke: null,
+            skipCache: true
+          };
+        }
+
+        return originalGetLyrics(info);
+      };
+
+      localProvider.__manualLocalLrcBridgeInstalled = true;
+      console.log("[Manual LRC Sync] Bridged saved lyrics into ivLyrics local provider.");
+    };
+
+    tryInstall();
+  }
+
   function looksLikeLyrics(text) {
     return String(text || "").split(/\r?\n/).filter(x => x.trim()).length >= 2;
   }
@@ -1056,6 +1108,7 @@
   waitForReady(() => {
     injectCss();
     registerProvider();
+    installLocalProviderBridge();
     injectRows();
 
     runtime.observer = new MutationObserver(injectRows);
